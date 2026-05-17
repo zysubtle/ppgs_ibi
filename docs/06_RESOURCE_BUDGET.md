@@ -24,6 +24,17 @@
 | RAM budget 宏 | `PPG_IBI_RAM_BUDGET_BYTES` = 20 KB |
 | 编译测试 | `make test` 检查 `sizeof(ppg_ibi_context_t) < PPG_IBI_RAM_BUDGET_BYTES` |
 
+## M3 输入时序资源说明
+
+M3 只使用 M2 context 中已有的 `sample_count`、`last_timestamp_ms`、`has_last_timestamp` 和门控状态做输入时序检查。
+
+- 未新增公开 context 字段；
+- 未引入算法大 buffer；
+- 未使用动态内存；
+- timestamp 校验只使用少量局部标量变量；
+- fixture smoke test 使用固定大小行缓冲，不属于 MCU 算法状态；
+- 仍满足算法 RAM < 20 KB 目标。
+
 ## RAM 管理原则
 
 1. 不使用动态内存。
@@ -38,7 +49,7 @@
 | 模块 | 主要 buffer / 状态 | 估算字节 | 状态 |
 |---|---|---:|---|
 | M2 API context | config、state、reject reason、counter、timestamp、门控状态 | host C 编译器下小于 64 B | M2 |
-| input/counter | timestamp 校验状态，后续细化 | TBD | M3 |
+| input/counter | `sample_count`、`last_timestamp_ms`、`has_last_timestamp`、门控状态 | 已包含在 M2 context，小于 64 B | M3 |
 | preprocess | TBD | TBD | M4 |
 | sqi | TBD | TBD | M4 |
 | detector | TBD | TBD | M5 |

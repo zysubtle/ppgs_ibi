@@ -23,6 +23,42 @@ static void ppg_ibi_reset_runtime(ppg_ibi_context_t *ctx)
     ctx->measurement_was_allowed = false;
 }
 
+static bool ppg_ibi_timestamp_has_error(const ppg_ibi_context_t *ctx,
+                                        uint32_t timestamp_ms)
+{
+    uint32_t expected_timestamp_ms;
+    uint32_t lower_bound_ms;
+    uint32_t upper_bound_ms;
+    uint32_t tolerance_ms;
+
+    if ((ctx->sample_count == 0u) || (!ctx->has_last_timestamp))
+    {
+        return false;
+    }
+
+    if (timestamp_ms <= ctx->last_timestamp_ms)
+    {
+        return true;
+    }
+
+    tolerance_ms = (uint32_t)ctx->config.timestamp_tolerance_ms;
+    expected_timestamp_ms = ctx->last_timestamp_ms +
+                            (uint32_t)ctx->config.expected_sample_interval_ms;
+    if (expected_timestamp_ms < ctx->last_timestamp_ms)
+    {
+        return true;
+    }
+
+    lower_bound_ms = expected_timestamp_ms - tolerance_ms;
+    upper_bound_ms = expected_timestamp_ms + tolerance_ms;
+    if (upper_bound_ms < expected_timestamp_ms)
+    {
+        return true;
+    }
+
+    return (timestamp_ms < lower_bound_ms) || (timestamp_ms > upper_bound_ms);
+}
+
 const char *ppg_ibi_version(void)
 {
     return "0.2.0";
@@ -105,7 +141,6 @@ ppg_ibi_status_t ppg_ibi_process(ppg_ibi_context_t *ctx,
                                  ppg_ibi_event_t *event,
                                  bool *has_event)
 {
-    uint32_t delta_ms;
     bool timestamp_error;
 
     if ((ctx == NULL) || (sample == NULL) || (event == NULL) ||
@@ -126,10 +161,9 @@ ppg_ibi_status_t ppg_ibi_process(ppg_ibi_context_t *ctx,
         return PPG_IBI_STATUS_ERROR_CONFIG;
     }
 
-    ctx->sample_count++;
-
     if (!sample->allow_measure)
     {
+        ctx->sample_count++;
         ctx->state = PPG_IBI_STATE_REACQUIRE;
         ctx->reject_reason = PPG_IBI_REJECT_MEASURE_NOT_ALLOWED;
         ctx->measurement_was_allowed = false;
@@ -141,20 +175,8 @@ ppg_ibi_status_t ppg_ibi_process(ppg_ibi_context_t *ctx,
         return PPG_IBI_STATUS_OK;
     }
 
-    timestamp_error = false;
-    if (ctx->has_last_timestamp)
-    {
-        delta_ms = sample->timestamp_ms - ctx->last_timestamp_ms;
-        if ((delta_ms <
-             ((uint32_t)ctx->config.expected_sample_interval_ms -
-              (uint32_t)ctx->config.timestamp_tolerance_ms)) ||
-            (delta_ms >
-             ((uint32_t)ctx->config.expected_sample_interval_ms +
-              (uint32_t)ctx->config.timestamp_tolerance_ms)))
-        {
-            timestamp_error = true;
-        }
-    }
+    timestamp_error = ppg_ibi_timestamp_has_error(ctx, sample->timestamp_ms);
+    ctx->sample_count++;
 
     ctx->last_timestamp_ms = sample->timestamp_ms;
     ctx->has_last_timestamp = true;
@@ -173,6 +195,10 @@ ppg_ibi_status_t ppg_ibi_process(ppg_ibi_context_t *ctx,
     if (ctx->state == PPG_IBI_STATE_INIT)
     {
         ctx->state = PPG_IBI_STATE_ACQUIRE;
+    }
+    else if (ctx->state == PPG_IBI_STATE_REACQUIRE)
+    {
+        ctx->state = PPG_IBI_STATE_REACQUIRE;
     }
     else if (!ctx->measurement_was_allowed)
     {
