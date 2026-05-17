@@ -22,6 +22,20 @@
 - ADC 位宽：24 bit，宏为 `PPG_IBI_ADC_BITS`；
 - 多通道严格同步。
 
+## M3 输入时序约定
+
+M3 已确认逐点输入链路的基础时序处理：
+
+1. 每个输入样本必须带 `timestamp_ms`。
+2. 内部维护 `sample_count`，初始化和 reset 后从 0 开始。
+3. 每成功处理一个输入样本，`sample_count` 递增。
+4. `sample_count` 和上一样本 timestamp 共同用于判断下一个样本是否符合 50 Hz / 20 ms 预期。
+5. 正常 20 ms 步长不得触发 timestamp 异常。
+6. timestamp 倒退、重复、大幅跳变或缺样视为 timestamp 异常。
+7. timestamp 异常时不输出有效 IBI，状态进入或保持 `REACQUIRE`，`reject_reason` 使用 `PPG_IBI_REJECT_TIMESTAMP_ERROR`。
+8. M3 不实现复杂重同步；异常后的正常样本允许继续保持 `REACQUIRE`。
+9. `allow_measure = false` 时立即停止输出 IBI，状态进入或保持 `REACQUIRE`，`reject_reason` 使用 `PPG_IBI_REJECT_MEASURE_NOT_ALLOWED`。
+
 ## 配置需求
 
 C API 提供 `ppg_ibi_config_t`，用于集中保存固定配置和 timestamp 容忍参数。
